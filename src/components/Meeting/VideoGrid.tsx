@@ -25,7 +25,19 @@ function VideoTile({
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(console.error);
+      videoRef.current.play().catch((error) => {
+        // Ignore benign play() interruption errors
+        if (error.name !== 'AbortError') {
+          console.error('Video play error:', error);
+        }
+      });
+    }
+
+    // Cleanup function to properly detach media stream
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     }
   }, [stream]);
 

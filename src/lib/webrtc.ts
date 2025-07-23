@@ -224,25 +224,49 @@ export class WebRTCManager {
     if (data.to !== this.participantId) return;
 
     console.log('Received offer from:', data.name);
-    await this.createPeerConnection(data.from, data.name, false);
     
-    const peerConnection = this.peers.get(data.from);
+    // Handle simultaneous offers (glare condition)
+    let peerConnection = this.peers.get(data.from);
+    if (peerConnection && peerConnection.peer.signalingState === 'have-local-offer') {
+      // Use tie-breaker: lexicographically smaller ID processes the offer
+      if (this.participantId < data.from) {
+        console.log('Ignoring offer due to glare condition');
+        return;
+      } else {
+        // Close existing connection and create new one
+        peerConnection.peer.close();
+        this.peers.delete(data.from);
+        peerConnection = null;
+      }
+    }
+    
+    if (!peerConnection) {
+      await this.createPeerConnection(data.from, data.name, false);
+      peerConnection = this.peers.get(data.from);
+    }
+    
     if (peerConnection) {
-      await peerConnection.peer.setRemoteDescription(data.offer);
+      // Only set remote description if in appropriate state
+      if (peerConnection.peer.signalingState === 'stable' || 
+          peerConnection.peer.signalingState === 'have-remote-offer') {
+        await peerConnection.peer.setRemoteDescription(data.offer);
       
-      const answer = await peerConnection.peer.createAnswer();
-      await peerConnection.peer.setLocalDescription(answer);
+        const answer = await peerConnection.peer.createAnswer();
+        await peerConnection.peer.setLocalDescription(answer);
       
-      this.signalingChannel.send({
-        type: 'broadcast',
-        event: 'answer',
-        payload: {
-          from: this.participantId,
-          to: data.from,
-          answer: answer,
-          name: this.participantName
-        }
-      });
+        this.signalingChannel.send({
+          type: 'broadcast',
+          event: 'answer',
+          payload: {
+            from: this.participantId,
+            to: data.from,
+            answer: answer,
+            name: this.participantName
+          }
+        });
+      } else {
+        console.log('Cannot set remote description, wrong signaling state:', peerConnection.peer.signalingState);
+      }
     }
   }
 
@@ -251,8 +275,10 @@ export class WebRTCManager {
 
     console.log('Received answer from:', data.name);
     const peerConnection = this.peers.get(data.from);
-    if (peerConnection) {
+    if (peerConnection && peerConnection.peer.signalingState === 'have-local-offer') {
       await peerConnection.peer.setRemoteDescription(data.answer);
+    } else if (peerConnection) {
+      console.log('Cannot set remote description, wrong signaling state:', peerConnection.peer.signalingState);
     }
   }
 
