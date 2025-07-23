@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, Hand } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Hand, Sparkles } from 'lucide-react';
 
 interface VideoTileProps {
   stream?: MediaStream;
@@ -8,6 +8,7 @@ interface VideoTileProps {
   isMuted?: boolean;
   isCameraOff?: boolean;
   isScreenShare?: boolean;
+  backgroundBlur?: boolean;
   handRaised?: boolean;
 }
 
@@ -18,6 +19,7 @@ function VideoTile({
   isMuted = false, 
   isCameraOff = false,
   isScreenShare = false,
+  backgroundBlur = false,
   handRaised = false
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -55,7 +57,9 @@ function VideoTile({
           autoPlay
           playsInline
           muted={isLocal}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover transition-all duration-300 ${
+            backgroundBlur && isLocal ? 'filter blur-sm' : ''
+          }`}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
@@ -101,6 +105,15 @@ function VideoTile({
           </span>
         </div>
       )}
+
+      {backgroundBlur && isLocal && !isScreenShare && (
+        <div className="absolute top-3 right-12">
+          <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            Blur
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -112,6 +125,7 @@ interface VideoGridProps {
   isMuted: boolean;
   isCameraOff: boolean;
   isScreenSharing: boolean;
+  backgroundBlurEnabled: boolean;
   handRaisedParticipants: Set<string>;
   localHandRaised: boolean;
 }
@@ -123,6 +137,7 @@ export function VideoGrid({
   isMuted,
   isCameraOff,
   isScreenSharing,
+  backgroundBlurEnabled,
   handRaisedParticipants,
   localHandRaised
 }: VideoGridProps) {
@@ -147,6 +162,7 @@ export function VideoGrid({
         isMuted={isMuted}
         isCameraOff={isCameraOff}
         isScreenShare={isScreenSharing}
+        backgroundBlur={backgroundBlurEnabled}
         handRaised={localHandRaised}
       />
 

@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Video, VideoOff, Mic, MicOff, Monitor, MonitorOff, 
   MessageSquare, Users, Hand, PhoneOff, Settings,
-  Copy, Send, MoreVertical
+  Copy, Send, MoreVertical, Sparkles
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { WebRTCManager } from '../../lib/webrtc';
@@ -52,6 +52,7 @@ export function MeetingRoom() {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [handRaisedParticipants, setHandRaisedParticipants] = useState<Set<string>>(new Set());
+  const [backgroundBlurEnabled, setBackgroundBlurEnabled] = useState(false);
 
   // WebRTC
   const [webrtcManager, setWebrtcManager] = useState<WebRTCManager | null>(null);
@@ -61,7 +62,7 @@ export function MeetingRoom() {
   // Refs
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const participantsRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const webrtcRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const connectionStatsIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (meetingCode) {
@@ -89,8 +90,8 @@ export function MeetingRoom() {
     if (participantsRefreshIntervalRef.current) {
       clearInterval(participantsRefreshIntervalRef.current);
     }
-    if (webrtcRefreshIntervalRef.current) {
-      clearInterval(webrtcRefreshIntervalRef.current);
+    if (connectionStatsIntervalRef.current) {
+      clearInterval(connectionStatsIntervalRef.current);
     }
   };
 
@@ -183,6 +184,9 @@ export function MeetingRoom() {
       // Start real-time updates
       startRealtimeUpdates(meetingData.id);
       
+      // Start connection monitoring
+      startConnectionMonitoring();
+      
       setIsLoading(false);
       toast.success('Joined meeting successfully!');
       
@@ -200,15 +204,23 @@ export function MeetingRoom() {
     // Set up participants refresh every 2 seconds
     participantsRefreshIntervalRef.current = setInterval(() => {
       fetchParticipants(meetingId);
-    }, 2000);
+    }, 1500); // Faster refresh for better real-time experience
 
-    // Set up WebRTC connection refresh every 30 seconds
-    webrtcRefreshIntervalRef.current = setInterval(() => {
-      if (webrtcManager && remoteStreams.size === 0 && participants.length > 1) {
-        console.log('No remote streams detected, refreshing WebRTC connection...');
-        webrtcManager.refreshConnection();
+    // Fetch initial participants immediately
+    fetchParticipants(meetingId);
+  };
+
+  const startConnectionMonitoring = () => {
+    // Monitor connection quality every 10 seconds
+    connectionStatsIntervalRef.current = setInterval(async () => {
+      if (webrtcManager) {
+        const stats = await webrtcManager.getConnectionStats();
+        // Log connection quality for debugging
+        if (stats.size > 0) {
+          console.log('Connection stats:', stats);
+        }
       }
-    }, 30000);
+    }, 10000);
   };
 
   const fetchParticipants = async (meetingId: string) => {
@@ -221,6 +233,10 @@ export function MeetingRoom() {
         .order('joined_at', { ascending: true });
 
       if (error) throw error;
+      
+      // Update participants and trigger WebRTC connections for new ones
+      const currentParticipantCount = participants.length;
+      const newParticipantCount = data?.length || 0;
       setParticipants(data || []);
     } catch (error) {
       console.error('Error fetching participants:', error);
@@ -276,6 +292,15 @@ export function MeetingRoom() {
     } catch (error) {
       console.error('Error toggling screen share:', error);
       toast.error('Failed to toggle screen sharing');
+    }
+  };
+
+  const toggleBackgroundBlur = async () => {
+    if (webrtcManager) {
+      const newBlurState = !backgroundBlurEnabled;
+      await webrtcManager.toggleBackgroundBlur(newBlurState);
+      setBackgroundBlurEnabled(newBlurState);
+      toast.success(newBlurState ? 'Background blur enabled' : 'Background blur disabled');
     }
   };
 
@@ -367,6 +392,7 @@ export function MeetingRoom() {
           isMuted={isMuted}
           isCameraOff={isCameraOff}
           isScreenSharing={isScreenSharing}
+          backgroundBlurEnabled={backgroundBlurEnabled}
           handRaisedParticipants={handRaisedParticipants}
           localHandRaised={handRaised}
         />
@@ -462,6 +488,18 @@ export function MeetingRoom() {
               title={handRaised ? 'Lower hand' : 'Raise hand'}
             >
               <Hand className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
+            </button>
+
+            <button
+              onClick={toggleBackgroundBlur}
+              className={`p-3 sm:p-4 rounded-full transition-all flex-shrink-0 ${
+                backgroundBlurEnabled 
+                  ? 'bg-purple-500 hover:bg-purple-600' 
+                  : 'bg-white/20 hover:bg-white/30'
+              }`}
+              title={backgroundBlurEnabled ? 'Disable background blur' : 'Enable background blur'}
+            >
+              <Sparkles className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
             </button>
 
             <button

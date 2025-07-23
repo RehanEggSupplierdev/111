@@ -13,7 +13,7 @@ export interface ChatMessage {
 export function useRealtimeChat(meetingId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lastFetch, setLastFetch] = useState(Date.now());
+  const [lastMessageTime, setLastMessageTime] = useState<string>('');
 
   useEffect(() => {
     if (!meetingId) return;
@@ -29,7 +29,9 @@ export function useRealtimeChat(meetingId: string) {
 
         if (error) throw error;
         setMessages(data || []);
-        setLastFetch(Date.now());
+        if (data && data.length > 0) {
+          setLastMessageTime(data[data.length - 1].created_at);
+        }
       } catch (error) {
         console.error('Error fetching messages:', error);
       } finally {
@@ -39,26 +41,26 @@ export function useRealtimeChat(meetingId: string) {
 
     fetchMessages();
 
-    // Real-time polling for messages (more reliable than realtime subscriptions)
+    // Ultra-fast polling for near-instant messaging
     const pollMessages = setInterval(async () => {
       try {
         const { data, error } = await supabase
           .from('messages')
           .select('*')
           .eq('meeting_id', meetingId)
-          .gt('created_at', new Date(lastFetch).toISOString())
+          .gt('created_at', lastMessageTime || new Date(0).toISOString())
           .order('created_at', { ascending: true });
 
         if (error) throw error;
         
         if (data && data.length > 0) {
           setMessages(prev => [...prev, ...data]);
-          setLastFetch(Date.now());
+          setLastMessageTime(data[data.length - 1].created_at);
         }
       } catch (error) {
         console.error('Error polling messages:', error);
       }
-    }, 500); // Poll every 500ms for near real-time experience
+    }, 200); // Poll every 200ms for ultra-fast messaging
 
     // Also keep the realtime subscription as backup
     const channel = supabase
@@ -79,7 +81,7 @@ export function useRealtimeChat(meetingId: string) {
             }
             return [...prev, newMessage];
           });
-          setLastFetch(Date.now());
+          setLastMessageTime(newMessage.created_at);
         }
       )
       .subscribe();
@@ -103,7 +105,7 @@ export function useRealtimeChat(meetingId: string) {
 
       if (error) throw error;
       
-      // Immediately fetch new messages after sending
+      // Immediately refresh messages after sending
       setTimeout(async () => {
         try {
           const { data, error } = await supabase
@@ -114,12 +116,14 @@ export function useRealtimeChat(meetingId: string) {
 
           if (!error && data) {
             setMessages(data);
-            setLastFetch(Date.now());
+            if (data.length > 0) {
+              setLastMessageTime(data[data.length - 1].created_at);
+            }
           }
         } catch (error) {
           console.error('Error refreshing messages:', error);
         }
-      }, 100);
+      }, 50); // Faster refresh after sending
       
       return true;
     } catch (error) {
