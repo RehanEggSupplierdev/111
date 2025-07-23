@@ -15,8 +15,11 @@ export class WebRTCManager {
   private participantName: string;
   private onStreamCallback?: (peerId: string, stream: MediaStream, name: string) => void;
   private onPeerLeftCallback?: (peerId: string) => void;
+  private onHandRaisedCallback?: (participantId: string, name: string, raised: boolean) => void;
   private signalingChannel: any;
   private isInitialized = false;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
 
   constructor(meetingId: string, participantId: string, participantName: string) {
     this.meetingId = meetingId;
@@ -43,7 +46,27 @@ export class WebRTCManager {
       .on('broadcast', { event: 'user-left' }, (payload) => {
         this.handleUserLeft(payload.payload);
       })
+      .on('broadcast', { event: 'hand-raised' }, (payload) => {
+        if (payload.payload.participantId !== this.participantId) {
+          this.onHandRaisedCallback?.(
+            payload.payload.participantId, 
+            payload.payload.name, 
+            payload.payload.raised
+          );
+        }
+      })
       .subscribe();
+
+    // Handle connection state changes for auto-reconnect
+    this.signalingChannel.on('system', {}, (payload: any) => {
+      if (payload.status === 'CHANNEL_ERROR' && this.reconnectAttempts < this.maxReconnectAttempts) {
+        console.log('Channel error, attempting to reconnect...');
+        this.reconnectAttempts++;
+        setTimeout(() => {
+          this.setupSignaling();
+        }, 1000 * this.reconnectAttempts);
+      }
+    });
   }
 
   async initializeMedia(video: boolean = true, audio: boolean = true): Promise<MediaStream> {
@@ -289,11 +312,7 @@ export class WebRTCManager {
   }
 
   onHandRaised(callback: (participantId: string, name: string, raised: boolean) => void) {
-    this.signalingChannel.on('broadcast', { event: 'hand-raised' }, (payload: any) => {
-      if (payload.payload.participantId !== this.participantId) {
-        callback(payload.payload.participantId, payload.payload.name, payload.payload.raised);
-      }
-    });
+    this.onHandRaisedCallback = callback;
   }
 
   async leaveMeeting() {
@@ -313,5 +332,31 @@ export class WebRTCManager {
     }
 
     this.signalingChannel.unsubscribe();
+  }
+
+  // Method to force refresh connection
+  async refreshConnection() {
+    console.log('Refreshing WebRTC connection...');
+    this.reconnectAttempts = 0;
+    
+    // Close existing connections
+    this.peers.forEach(({ peer }) => peer.close());
+    this.peers.clear();
+    
+    // Unsubscribe and resubscribe to signaling
+    this.signalingChannel.unsubscribe();
+    this.setupSignaling();
+    
+    // Re-announce presence
+    setTimeout(async () => {
+      await this.signalingChannel.send({
+        type: 'broadcast',
+        event: 'user-joined',
+        payload: { 
+          participantId: this.participantId,
+          name: this.participantName
+        }
+      });
+    }, 1000);
   }
 }

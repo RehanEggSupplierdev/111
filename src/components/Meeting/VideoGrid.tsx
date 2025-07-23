@@ -118,15 +118,15 @@ export function VideoGrid({
   
   // Determine grid layout
   const getGridClass = () => {
-    if (totalParticipants === 1) return 'grid-cols-1';
-    if (totalParticipants === 2) return 'grid-cols-1 lg:grid-cols-2';
-    if (totalParticipants <= 4) return 'grid-cols-2';
-    if (totalParticipants <= 6) return 'grid-cols-2 lg:grid-cols-3';
-    return 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+    if (totalParticipants === 1) return 'grid-cols-1 place-items-center';
+    if (totalParticipants === 2) return 'grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4';
+    if (totalParticipants <= 4) return 'grid-cols-2 gap-2 sm:gap-4';
+    if (totalParticipants <= 6) return 'grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4';
+    return 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4';
   };
 
   return (
-    <div className={`grid gap-4 p-4 h-full ${getGridClass()}`}>
+    <div className={`grid p-2 sm:p-4 h-full ${getGridClass()}`}>
       {/* Local video */}
       <VideoTile
         stream={localStream}

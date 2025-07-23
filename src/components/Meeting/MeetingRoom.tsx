@@ -11,6 +11,7 @@ import { VideoGrid } from './VideoGrid';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
+import { useRealtimeChat } from '../../hooks/useRealtimeChat';
 
 interface ChatMessage {
   id: string;
@@ -59,8 +60,8 @@ export function MeetingRoom() {
 
   // Refs
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const chatRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const participantsRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const webrtcRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (meetingCode) {
@@ -85,11 +86,11 @@ export function MeetingRoom() {
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
     }
-    if (chatRefreshIntervalRef.current) {
-      clearInterval(chatRefreshIntervalRef.current);
-    }
     if (participantsRefreshIntervalRef.current) {
       clearInterval(participantsRefreshIntervalRef.current);
+    }
+    if (webrtcRefreshIntervalRef.current) {
+      clearInterval(webrtcRefreshIntervalRef.current);
     }
   };
 
@@ -193,34 +194,21 @@ export function MeetingRoom() {
   };
 
   const startRealtimeUpdates = (meetingId: string) => {
-    // Fetch initial data
-    fetchChatMessages(meetingId);
+    // Fetch initial participants
     fetchParticipants(meetingId);
 
-    // Set up chat refresh every 1 second for real-time feel
-    chatRefreshIntervalRef.current = setInterval(() => {
-      fetchChatMessages(meetingId);
-    }, 1000);
-
-    // Set up participants refresh every 3 seconds
+    // Set up participants refresh every 2 seconds
     participantsRefreshIntervalRef.current = setInterval(() => {
       fetchParticipants(meetingId);
-    }, 3000);
-  };
+    }, 2000);
 
-  const fetchChatMessages = async (meetingId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('meeting_id', meetingId)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setChatMessages(data || []);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    }
+    // Set up WebRTC connection refresh every 30 seconds
+    webrtcRefreshIntervalRef.current = setInterval(() => {
+      if (webrtcManager && remoteStreams.size === 0 && participants.length > 1) {
+        console.log('No remote streams detected, refreshing WebRTC connection...');
+        webrtcManager.refreshConnection();
+      }
+    }, 30000);
   };
 
   const fetchParticipants = async (meetingId: string) => {
@@ -316,13 +304,19 @@ export function MeetingRoom() {
 
       if (error) throw error;
       setNewMessage('');
-      // Immediately fetch messages to show the new message
-      fetchChatMessages(meeting.id);
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
     }
   };
+
+  // Use the real-time chat hook
+  const { messages: realtimeChatMessages } = useRealtimeChat(meeting?.id || '');
+  
+  // Update chat messages from the hook
+  useEffect(() => {
+    setChatMessages(realtimeChatMessages);
+  }, [realtimeChatMessages]);
 
   const leaveMeeting = async () => {
     try {
@@ -362,7 +356,7 @@ export function MeetingRoom() {
   }
 
   return (
-    <div className="h-screen bg-gray-900 flex">
+    <div className="h-screen bg-gray-900 flex flex-col lg:flex-row">
       {/* Main video area */}
       <div className="flex-1 relative">
         {/* Video Grid */}
@@ -378,41 +372,41 @@ export function MeetingRoom() {
         />
         
         {/* Top bar */}
-        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-6 z-10">
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-3 sm:p-6 z-10">
           <div className="flex items-center justify-between text-white">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold">{meeting?.title}</h1>
-              <span className="text-sm opacity-75">
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
+              <h1 className="text-sm sm:text-xl font-semibold truncate">{meeting?.title}</h1>
+              <span className="text-xs sm:text-sm opacity-75 hidden sm:inline">
                 {format(new Date(), 'HH:mm')}
               </span>
-              <span className="text-sm bg-white/20 px-2 py-1 rounded">
+              <span className="text-xs sm:text-sm bg-white/20 px-2 py-1 rounded whitespace-nowrap">
                 {participants.length} participant{participants.length !== 1 ? 's' : ''}
               </span>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 sm:space-x-2">
               <button
                 onClick={copyMeetingLink}
-                className="px-3 py-1 bg-white/20 rounded-lg hover:bg-white/30 transition-all text-sm flex items-center gap-2"
+                className="px-2 sm:px-3 py-1 bg-white/20 rounded-lg hover:bg-white/30 transition-all text-xs sm:text-sm flex items-center gap-1 sm:gap-2"
               >
-                <Copy className="w-4 h-4" />
-                Copy Link
+                <Copy className="w-3 sm:w-4 h-3 sm:h-4" />
+                <span className="hidden sm:inline">Copy Link</span>
               </button>
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all lg:hidden"
+                className="p-1.5 sm:p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all lg:hidden"
               >
-                <MoreVertical className="w-5 h-5" />
+                <MoreVertical className="w-4 sm:w-5 h-4 sm:h-5" />
               </button>
             </div>
           </div>
         </div>
 
         {/* Bottom controls */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-6 z-10">
-          <div className="flex items-center justify-center space-x-4">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 sm:p-6 z-10">
+          <div className="flex items-center justify-center space-x-2 sm:space-x-4 overflow-x-auto">
             <button
               onClick={toggleMute}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3 sm:p-4 rounded-full transition-all flex-shrink-0 ${
                 isMuted 
                   ? 'bg-red-500 hover:bg-red-600' 
                   : 'bg-white/20 hover:bg-white/30'
@@ -420,15 +414,15 @@ export function MeetingRoom() {
               title={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? (
-                <MicOff className="w-6 h-6 text-white" />
+                <MicOff className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
               ) : (
-                <Mic className="w-6 h-6 text-white" />
+                <Mic className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
               )}
             </button>
 
             <button
               onClick={toggleCamera}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3 sm:p-4 rounded-full transition-all flex-shrink-0 ${
                 isCameraOff 
                   ? 'bg-red-500 hover:bg-red-600' 
                   : 'bg-white/20 hover:bg-white/30'
@@ -436,15 +430,15 @@ export function MeetingRoom() {
               title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
             >
               {isCameraOff ? (
-                <VideoOff className="w-6 h-6 text-white" />
+                <VideoOff className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
               ) : (
-                <Video className="w-6 h-6 text-white" />
+                <Video className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
               )}
             </button>
 
             <button
               onClick={toggleScreenShare}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3 sm:p-4 rounded-full transition-all flex-shrink-0 ${
                 isScreenSharing 
                   ? 'bg-blue-500 hover:bg-blue-600' 
                   : 'bg-white/20 hover:bg-white/30'
@@ -452,47 +446,47 @@ export function MeetingRoom() {
               title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
             >
               {isScreenSharing ? (
-                <MonitorOff className="w-6 h-6 text-white" />
+                <MonitorOff className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
               ) : (
-                <Monitor className="w-6 h-6 text-white" />
+                <Monitor className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
               )}
             </button>
 
             <button
               onClick={toggleHandRaise}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3 sm:p-4 rounded-full transition-all flex-shrink-0 ${
                 handRaised 
                   ? 'bg-yellow-500 hover:bg-yellow-600' 
                   : 'bg-white/20 hover:bg-white/30'
               }`}
               title={handRaised ? 'Lower hand' : 'Raise hand'}
             >
-              <Hand className="w-6 h-6 text-white" />
+              <Hand className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
             </button>
 
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-4 rounded-full bg-white/20 hover:bg-white/30 transition-all lg:hidden"
+              className="p-3 sm:p-4 rounded-full bg-white/20 hover:bg-white/30 transition-all lg:hidden flex-shrink-0"
               title="Toggle chat"
             >
-              <MessageSquare className="w-6 h-6 text-white" />
+              <MessageSquare className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
             </button>
 
             <button
               onClick={leaveMeeting}
-              className="p-4 rounded-full bg-red-500 hover:bg-red-600 transition-all"
+              className="p-3 sm:p-4 rounded-full bg-red-500 hover:bg-red-600 transition-all flex-shrink-0"
               title="Leave meeting"
             >
-              <PhoneOff className="w-6 h-6 text-white" />
+              <PhoneOff className="w-5 sm:w-6 h-5 sm:h-6 text-white" />
             </button>
           </div>
         </div>
       </div>
 
       {/* Sidebar */}
-      <div className={`w-80 bg-white border-l border-gray-200 flex flex-col transition-all duration-300 ${
-        sidebarOpen ? 'translate-x-0' : 'translate-x-full'
-      } lg:translate-x-0`}>
+      <div className={`w-full lg:w-80 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col transition-all duration-300 ${
+        sidebarOpen ? 'flex' : 'hidden'
+      } lg:flex absolute lg:relative bottom-0 lg:bottom-auto left-0 right-0 lg:left-auto lg:right-auto h-1/2 lg:h-full z-20`}>
         {/* Sidebar header */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex space-x-1">
@@ -504,7 +498,7 @@ export function MeetingRoom() {
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
-              <MessageSquare className="w-4 h-4 inline mr-2" />
+              <MessageSquare className="w-3 sm:w-4 h-3 sm:h-4 inline mr-1 sm:mr-2" />
               Chat
             </button>
             <button
@@ -515,7 +509,7 @@ export function MeetingRoom() {
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
-              <Users className="w-4 h-4 inline mr-2" />
+              <Users className="w-3 sm:w-4 h-3 sm:h-4 inline mr-1 sm:mr-2" />
               People ({participants.length})
             </button>
           </div>
@@ -528,75 +522,75 @@ export function MeetingRoom() {
               {/* Chat messages */}
               <div 
                 ref={chatContainerRef}
-                className="flex-1 overflow-y-auto p-4 space-y-4"
+                className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4"
               >
                 {chatMessages.map((message) => (
-                  <div key={message.id} className="flex flex-col space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium text-gray-900">
+                  <div key={message.id} className="flex flex-col space-y-1 sm:space-y-1">
+                    <div className="flex items-center space-x-1 sm:space-x-2">
+                      <span className="text-xs sm:text-sm font-medium text-gray-900 truncate">
                         {message.sender_name}
                       </span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 flex-shrink-0">
                         {format(new Date(message.created_at), 'HH:mm')}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                    <p className="text-xs sm:text-sm text-gray-700 bg-gray-50 rounded-lg px-2 sm:px-3 py-1 sm:py-2 break-words">
                       {message.content}
                     </p>
                   </div>
                 ))}
                 {chatMessages.length === 0 && (
                   <div className="text-center text-gray-500 py-8">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No messages yet</p>
+                    <MessageSquare className="w-6 sm:w-8 h-6 sm:h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-xs sm:text-sm">No messages yet</p>
                     <p className="text-xs">Start the conversation!</p>
                   </div>
                 )}
               </div>
 
               {/* Chat input */}
-              <div className="p-4 border-t border-gray-200">
-                <form onSubmit={sendMessage} className="flex space-x-2">
+              <div className="p-3 sm:p-4 border-t border-gray-200">
+                <form onSubmit={sendMessage} className="flex space-x-1 sm:space-x-2">
                   <input
                     type="text"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     placeholder="Type a message..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xs sm:text-sm"
                   />
                   <button
                     type="submit"
                     disabled={!newMessage.trim()}
-                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-3 sm:w-4 h-3 sm:h-4" />
                   </button>
                 </form>
               </div>
             </>
           ) : (
             /* Participants list */
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-3">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+              <div className="space-y-2 sm:space-y-3">
                 {participants.map((participant) => (
-                  <div key={participant.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                      <span className="text-white font-medium text-sm">
+                  <div key={participant.id} className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg hover:bg-gray-50">
+                    <div className="w-8 sm:w-10 h-8 sm:h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white font-medium text-xs sm:text-sm">
                         {participant.name.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <p className="text-sm font-medium text-gray-900">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-1 sm:space-x-2">
+                        <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
                           {participant.name}
                           {participant.name === participantName && ' (You)'}
                           {participant.name === meeting?.host_name && ' (Host)'}
                         </p>
                         {handRaisedParticipants.has(participant.id) && (
-                          <Hand className="w-4 h-4 text-yellow-500" />
+                          <Hand className="w-3 sm:w-4 h-3 sm:h-4 text-yellow-500 flex-shrink-0" />
                         )}
                       </div>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 truncate">
                         Joined {format(new Date(participant.joined_at), 'HH:mm')}
                       </p>
                     </div>
@@ -604,8 +598,8 @@ export function MeetingRoom() {
                 ))}
                 {participants.length === 0 && (
                   <div className="text-center text-gray-500 py-8">
-                    <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No participants yet</p>
+                    <Users className="w-6 sm:w-8 h-6 sm:h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-xs sm:text-sm">No participants yet</p>
                   </div>
                 )}
               </div>
