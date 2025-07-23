@@ -408,6 +408,9 @@ export function MeetingRoom() {
               <span className="text-xs sm:text-sm bg-white/20 px-2 py-1 rounded whitespace-nowrap">
                 {participants.length} participant{participants.length !== 1 ? 's' : ''}
               </span>
+              <span className="text-xs opacity-50 hidden lg:inline">
+                © @aftabstack
+              </span>
             </div>
             <div className="flex items-center space-x-1 sm:space-x-2">
               <button

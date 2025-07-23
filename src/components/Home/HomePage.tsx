@@ -168,6 +168,21 @@ export function HomePage() {
             <ChevronRight className="w-5 h-5" />
           </Link>
         </div>
+        
+        {/* Footer with credits */}
+        <div className="mt-12 pt-8 border-t border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <p className="text-sm text-gray-500">
+                © 2025 Metstack. Created by{' '}
+                <span className="font-semibold text-blue-600">@aftabstack</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Professional video conferencing platform with real-time collaboration
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

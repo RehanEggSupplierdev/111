@@ -16,6 +16,9 @@ export function Header() {
             <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               Metstack
             </span>
+            <span className="text-xs text-gray-500 ml-2 hidden lg:inline">
+              © @aftabstack
+            </span>
           </Link>
 
           {/* Desktop Navigation */}

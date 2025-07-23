@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "author": "@aftabstack",
+  "description": "Professional video conferencing platform with real-time collaboration",
+  "keywords": ["video-conferencing", "webrtc", "react", "typescript", "supabase", "real-time"],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
